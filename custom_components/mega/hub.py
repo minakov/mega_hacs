@@ -161,10 +161,11 @@ class MegaD:
         if force_d is not None:
             self.customize[CONF_FORCE_D] = force_d
         try:
-            if allow_hosts is not None and DOMAIN in hass.data:
-                allow_hosts = set(allow_hosts.split(";"))
-                hass.data[DOMAIN][CONF_HTTP].allowed_hosts |= allow_hosts
-            hass.data[DOMAIN][CONF_HTTP].protected = protected
+            if DOMAIN in hass.data:
+                if allow_hosts is not None:
+                    allow_hosts = set(allow_hosts.split(";"))
+                    hass.data[DOMAIN][CONF_HTTP].allowed_hosts |= allow_hosts
+                hass.data[DOMAIN][CONF_HTTP].protected = protected
         except Exception:
             self.lg.exception("while setting allowed hosts")
         self.binary_sensors = []

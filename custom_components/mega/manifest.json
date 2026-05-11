@@ -2,7 +2,7 @@
   "domain": "mega",
   "name": "mega",
   "config_flow": true,
-  "documentation": "https://github.com/andvikt/mega_hacs",
+  "documentation": "https://github.com/minakov/mega_hacs",
   "requirements": [
     "beautifulsoup4",
     "lxml"
@@ -12,8 +12,8 @@
   "homekit": {},
   "after_dependencies": ["mqtt"],
   "codeowners": [
-    "@andvikt"
+    "@minakov"
   ],
-  "issue_tracker": "https://github.com/andvikt/mega_hacs/issues",
+  "issue_tracker": "https://github.com/minakov/mega_hacs/issues",
   "version": "v1.1.9"
 }

@@ -1,10 +1,10 @@
 # MegaD HomeAssistant integration
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/custom-components/hacs)
 [![Donate](https://img.shields.io/badge/donate-Yandex-red.svg)](https://yoomoney.ru/to/410013955329136)
-<a class="github-button" href="https://github.com/andvikt/mega_hacs" data-icon="octicon-star" data-show-count="true" aria-label="Star andvikt/mega_hacs on GitHub">Star</a>
+<a class="github-button" href="https://github.com/minakov/mega_hacs" data-icon="octicon-star" data-show-count="true" aria-label="Star minakov/mega_hacs on GitHub">Star</a>
 
-[Сообщить о проблеме](https://github.com/andvikt/mega_hacs/issues/new?assignees=&labels=&template=bug-report.md&title=){ .md-button .md-button--primary }
-[Предложение об улучшении](https://github.com/andvikt/mega_hacs/issues/new?assignees=&labels=enhancement&template=enhance.md&title=){ .md-button .md-button--primary }
+[Сообщить о проблеме](https://github.com/minakov/mega_hacs/issues/new?assignees=&labels=&template=bug-report.md&title=){ .md-button .md-button--primary }
+[Предложение об улучшении](https://github.com/minakov/mega_hacs/issues/new?assignees=&labels=enhancement&template=enhance.md&title=){ .md-button .md-button--primary }
 
 Интеграция с [MegaD-2561, MegaD-328](https://www.ab-log.ru/smart-house/ethernet/megad-2561)
 
@@ -12,7 +12,7 @@
 Если вам понравилась интеграция, не забудьте поставить звезду на гитхабе - вам не сложно, а мне приятно ) А если
 интеграция очень понравилась - еще приятнее, если вы воспользуетесь кнопкой доната )
 
-Обновление прошивки MegaD можно делать из HA с помощью [аддона](https://github.com/andvikt/mega_addon.git)
+Обновление прошивки MegaD можно делать из HA с помощью [аддона](https://github.com/minakov/mega_addon.git)
 
 ## Основные особенности {: #mains }
 - Настройка в [веб-интерфейсе](settings.md) + [yaml](yaml.md)
@@ -48,7 +48,7 @@
     Откройте терминал (стандартный аддон Terminal & SSH, если у вас есть supervisor, если нет то терминал вашей системы)
     ```shell
     # из папки с конфигом
-    wget -q -O - https://raw.githubusercontent.com/andvikt/mega_hacs/master/install.sh | bash -
+    wget -q -O - https://raw.githubusercontent.com/minakov/mega_hacs/master/install.sh | bash -
     ```
     Не забываем перезагрузить HA
 
@@ -65,7 +65,7 @@
 ## Зависимости {: #deps }
 Для максимальной скорости реакции на команды сервера, рекомендуется выключить `имитацию http-ответа` в 
 настройках интеграции и настроить proxy_pass к HA, самый простой способ сделать это - воспользоваться 
-[специальным аддоном](https://github.com/andvikt/mega_addon/tree/master/mega-proxy)
+[специальным аддоном](https://github.com/minakov/mega_addon/tree/master/mega-proxy)
 
 Обновить ваш контроллер до последней версии, обновление прошивки MegaD можно делать 
-из HA с помощью [аддона](https://github.com/andvikt/mega_addon.git)
+из HA с помощью [аддона](https://github.com/minakov/mega_addon.git)

@@ -1,4 +1,4 @@
-[Сообщить о проблеме](https://github.com/minakov/mega_hacs/issues/new?assignees=&labels=&template=bug-report.md&title=){ .md-button .md-button--primary }
+[Сообщить о проблеме](https://github.com/minakov/mega_hacs/issues/new?assignees=&labels=&template=bug-report.md&title=)
 
 В первую очередь проверьте лог на наличие ошибок, доступ к логу возможен по кнопке ниже.
 

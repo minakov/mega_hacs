@@ -3,8 +3,8 @@
 [![Donate](https://img.shields.io/badge/donate-Yandex-red.svg)](https://yoomoney.ru/to/410013955329136)
 <a class="github-button" href="https://github.com/minakov/mega_hacs" data-icon="octicon-star" data-show-count="true" aria-label="Star minakov/mega_hacs on GitHub">Star</a>
 
-[Сообщить о проблеме](https://github.com/minakov/mega_hacs/issues/new?assignees=&labels=&template=bug-report.md&title=){ .md-button .md-button--primary }
-[Предложение об улучшении](https://github.com/minakov/mega_hacs/issues/new?assignees=&labels=enhancement&template=enhance.md&title=){ .md-button .md-button--primary }
+[Сообщить о проблеме](https://github.com/minakov/mega_hacs/issues/new?assignees=&labels=&template=bug-report.md&title=)
+[Предложение об улучшении](https://github.com/minakov/mega_hacs/issues/new?assignees=&labels=enhancement&template=enhance.md&title=)
 
 Интеграция с [MegaD-2561, MegaD-328](https://www.ab-log.ru/smart-house/ethernet/megad-2561)
 
@@ -14,7 +14,7 @@
 
 Обновление прошивки MegaD можно делать из HA с помощью [аддона](https://github.com/minakov/mega_addon.git)
 
-## Основные особенности {: #mains }
+## Основные особенности
 - Настройка в [веб-интерфейсе](settings.md) + [yaml](yaml.md)
 - Все порты автоматически добавляются как устройства (для обычных релейных выходов создается 
   `light`, для шим - `light` с поддержкой яркости, для цифровых входов `binary_sensor`, для датчиков
@@ -36,7 +36,7 @@
 - поддержка всех возможных датчиков в режиме I2C-ANY, полный список поддерживаемых датчиков 
   [по ссылке](i2c.md) (начиная с версии 0.6.1)
 
-## Установка {: #install}
+## Установка
 Если вы уже раньше устанавливали HACS, то просто поищите в списке интеграций HACS MegaD, если нет, то сначла необходимо
 установить HACS - это витрина сторонних интеграций. [Инструкция по установке](https://hacs.xyz/docs/installation/installation)
 
@@ -44,25 +44,24 @@
 
 На этом установка не закончена, вам потребуется прописать настройки каждого контроллера, [подробнее](settings.md)
 
-!!! note "Альтернативный способ установки"
-    Откройте терминал (стандартный аддон Terminal & SSH, если у вас есть supervisor, если нет то терминал вашей системы)
-    ```shell
-    # из папки с конфигом
-    wget -q -O - https://raw.githubusercontent.com/minakov/mega_hacs/master/install.sh | bash -
-    ```
-    Не забываем перезагрузить HA
-
+> **Альтернативный способ установки**
+> Откройте терминал (стандартный аддон Terminal & SSH, если у вас есть supervisor, если нет то терминал вашей системы)
+> ```shell
+> # из папки с конфигом
+> wget -q -O - https://raw.githubusercontent.com/minakov/mega_hacs/master/install.sh | bash -
+> ```
+> Не забываем перезагрузить HA
 ## Обновления
 Обновления выполняются так же в меню HACS. 
 Информация об обновлениях приходит с некоторым интервалом, чтобы вручную проверить наличие обновлений
 нажмите три точки возле интеграции в меню HACS и нажмите `обновить информацию`
 
-## Беты {: #beta }
+## Беты
 Иногда я буду выпускать бета-версии, в стабильности которых пока не уверен и не готов раскатывать на всех, поэтому в целях тестирвоания
 нужно принудительно включать поддержку бет, для этого зайдите в HACS, найдите интеграцию MegaD, нажмите три точки, 
 там кнопка "переустановить" или reinstall, дальше нужно нажать галку "показывать бета-версии"
 
-## Зависимости {: #deps }
+## Зависимости
 Для максимальной скорости реакции на команды сервера, рекомендуется выключить `имитацию http-ответа` в 
 настройках интеграции и настроить proxy_pass к HA, самый простой способ сделать это - воспользоваться 
 [специальным аддоном](https://github.com/minakov/mega_addon/tree/master/mega-proxy)

@@ -14,9 +14,8 @@ import time
 from homeassistant.components.light import (
     PLATFORM_SCHEMA as LIGHT_SCHEMA,
     LightEntity,
-    ColorMode,
-    LightEntityFeature,
 )
+from homeassistant.components.light.const import ColorMode, LightEntityFeature
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     CONF_NAME,

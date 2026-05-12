@@ -8,7 +8,7 @@ from aiohttp.web_request import Request
 from aiohttp.web_response import Response
 
 from homeassistant.helpers.template import Template
-from homeassistant.components.http import HomeAssistantView
+from homeassistant.helpers.http import HomeAssistantView
 from homeassistant.core import HomeAssistant
 from .const import EVENT_BINARY_SENSOR, DOMAIN, CONF_RESPONSE_TEMPLATE
 from .tools import make_ints

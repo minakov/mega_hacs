@@ -61,8 +61,8 @@ SWITCH = {vol.Required(CONF_SWITCH): [_ITEM]}
 PLATFORM_SCHEMA = LIGHT_SCHEMA.extend(
     {
         vol.Optional(str, description="mega id"): {
-            vol.Optional("dimmer", default=[]): [_ITEM],
-            vol.Optional("switch", default=[]): [_ITEM],
+            vol.Optional("dimmer", default=[]): [_ITEM],  # type: ignore[call-arg]
+            vol.Optional("switch", default=[]): [_ITEM],  # type: ignore[call-arg]
         }
     },
     extra=vol.ALLOW_EXTRA,
@@ -110,7 +110,7 @@ async def async_setup_entry(
         for data in cfg:
             hub.lg.debug(f"add light on port %s with data %s", port, data)
             light = MegaLight(mega=hub, port=port, config_entry=config_entry, **data)
-            if "<" in light.name:
+            if light.name and "<" in light.name:
                 continue
             devices.append(light)
 
@@ -139,6 +139,8 @@ class MegaLight(MegaOutPort, LightEntity):
 
 
 class MegaRGBW(LightEntity, BaseMegaEntity):
+    port: typing.List  # always a list for RGB/RGBW
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._is_on = None
@@ -146,9 +148,9 @@ class MegaRGBW(LightEntity, BaseMegaEntity):
         self._hs_color = None
         self._rgb_color: tuple[int, int, int] | None = None
         self._white_value = None
-        self._task: asyncio.Task = None
+        self._task: typing.Optional[asyncio.Task] = None
         self._restore = None
-        self.smooth: timedelta = self.customize[CONF_SMOOTH]
+        self.smooth: timedelta = self.customize[CONF_SMOOTH]  # type: ignore[assignment]
         self._color_order = self.customize.get(CONF_ORDER, "rgb")
         self._last_called: float = 0
         self._max_values = None
@@ -160,7 +162,7 @@ class MegaRGBW(LightEntity, BaseMegaEntity):
                 self._max_values = [255] * 4
             else:
                 self._max_values = [
-                    255 if isinstance(x, int) else 4095 for x in self.port
+                    255 if isinstance(x, int) else 4095 for x in self.port  # type: ignore[union-attr]
                 ]
         return self._max_values
 
@@ -188,8 +190,8 @@ class MegaRGBW(LightEntity, BaseMegaEntity):
 
     @property
     def white_value(self):
-        # if self.supported_features & SUPPORT_WHITE_VALUE:
-        return float(self.get_attribute("white_value", 0))
+        val = self.get_attribute("white_value", 0)
+        return float(val) if val is not None else 0.0
 
     @property
     def rgb_color(self) -> tuple[int, int, int] | None:
@@ -202,7 +204,8 @@ class MegaRGBW(LightEntity, BaseMegaEntity):
 
     @property
     def brightness(self):
-        return float(self.get_attribute("brightness", 0))
+        val = self.get_attribute("brightness", 0)
+        return float(val) if val is not None else 0.0
 
     @property
     def hs_color(self):
@@ -219,8 +222,9 @@ class MegaRGBW(LightEntity, BaseMegaEntity):
     def get_rgbw(self):
         if not self.is_on:
             return [0 for x in range(len(self.port))] if not self.is_ws else [0] * 3
+        hs = self.hs_color or [0, 0]
         rgb = colorsys.hsv_to_rgb(
-            self.hs_color[0] / 360, self.hs_color[1] / 100, self.brightness / 255
+            float(hs[0]) / 360, float(hs[1]) / 100, self.brightness / 255
         )
         rgb = [x for x in rgb]
         if self.white_value is not None:
@@ -271,24 +275,24 @@ class MegaRGBW(LightEntity, BaseMegaEntity):
         for item, value in kwargs.items():
             setattr(self, f"_{item}", value)
             if item == "rgb_color":
-                _after = map_reorder_rgb(value, RGB, self._color_order)
+                _after = map_reorder_rgb(list(value), RGB, self._color_order)
         _after = _after or self.get_rgbw()
-        self._rgb_color = map_reorder_rgb(tuple(_after[:3]), self._color_order, RGB)
+        self._rgb_color = tuple(map_reorder_rgb(list(_after[:3]), self._color_order, RGB))  # type: ignore[assignment]
         if transition is None:
             transition = self.smooth.total_seconds()
-            ratio = self.calc_speed_ratio(_before, _after)
+            ratio = self.calc_speed_ratio(_before, _after) or 1.0
             transition = transition * ratio
         self.async_write_ha_state()
-        ports = self.port if not self.is_ws else self.port * 3
+        ports = self.port if not self.is_ws else list(self.port) * 3  # type: ignore[operator]
         config = [(port, _before[i], _after[i]) for i, port in enumerate(ports)]
         try:
             await self.mega.smooth_dim(
                 *config,
                 time=transition,
-                ws=self.is_ws,
+                ws=bool(self.is_ws),
                 jitter=50,
                 updater=partial(self._update_from_rgb, update_state=update_state),
-                can_smooth_hardware=self.can_smooth_hardware,
+                can_smooth_hardware=bool(self.can_smooth_hardware),
                 max_values=self.max_values,
                 chip=self.chip,
             )
@@ -322,7 +326,7 @@ class MegaRGBW(LightEntity, BaseMegaEntity):
             self._brightness = v
         if w is not None:
             if not self.customize.get(CONF_WHITE_SEP):
-                w = w / (self._brightness / 255)
+                w = w / ((self._brightness or 255) / 255)
             else:
                 w = w
             w = w / (self.max_values[-1] / 255)

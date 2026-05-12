@@ -34,7 +34,7 @@ class MegaView(HomeAssistantView):
         self.allowed_hosts = {'::1', '127.0.0.1'}
         self.notified_attempts = defaultdict(lambda : False)
         self.callbacks = defaultdict(lambda: defaultdict(list))
-        self.templates: typing.Dict[str, typing.Dict[str, Template]] = {
+        self.templates: typing.Dict[str, typing.Dict[str, Template]] = {  # type: ignore[assignment]
             mid: {
                 pt: cfg[mid][pt][CONF_RESPONSE_TEMPLATE]
                 for pt in cfg[mid]
@@ -50,7 +50,7 @@ class MegaView(HomeAssistantView):
         if self.protected:
             auth = False
             for x in self.allowed_hosts:
-                if request.remote.startswith(x):
+                if request.remote and request.remote.startswith(x):
                     auth = True
                     break
             if not auth:
@@ -70,8 +70,8 @@ class MegaView(HomeAssistantView):
                 _LOGGER.warning(msg)
                 return Response(status=401)
 
-        remote = request.headers.get('X-Real-IP', request.remote)
-        hub: 'h.MegaD' = self.hubs.get(remote)
+        remote = request.headers.get('X-Real-IP') or request.remote or ''
+        hub: 'h.MegaD' = self.hubs.get(remote)  # type: ignore[assignment]
         if hub is None and 'mdid' in request.query:
             hub = self.hubs.get(request.query['mdid'])
             if hub is None:
@@ -120,13 +120,14 @@ class MegaView(HomeAssistantView):
                         pt = f'{pt_orig}e{idx}' if not hub.new_naming else f'{int(pt_orig):02d}e{int(idx):02d}'
                         _data['pt_orig'] = pt_orig
                         _data['value'] = 'ON' if v == '1' else 'OFF'
-                        _data['m'] = 1 if _data[e] == '0' else 0  # имитация поведения обычного входа, чтобы события обрабатывались аналогично
+                        _data['m'] = '1' if _data[e] == '0' else '0'  # имитация поведения обычного входа, чтобы события обрабатывались аналогично
                         hub.values[pt] = _data
                         for cb in self.callbacks[hub.id][pt]:
                             cb(_data)
                         act = hub.ext_act.get(pt)
                         hub.lg.debug(f'act on port {pt}: {act}, all acts are: {hub.ext_act}')
-                        template: Template = self.templates.get(hub.id, {}).get(port, hub.def_response)
+                        _tmpl = self.templates.get(hub.id, {}).get(port, hub.def_response)
+                        template: Template = _tmpl  # type: ignore[assignment]
                         if template is not None:
                             template.hass = hass
                             ret = template.async_render(_data)
@@ -139,21 +140,22 @@ class MegaView(HomeAssistantView):
                 hub.values[port] = data
                 for cb in self.callbacks[hub.id][port]:
                     cb(data)
-                template: Template = self.templates.get(hub.id, {}).get(port, hub.def_response)
-                if template is not None:
-                    template.hass = hass
-                    ret = template.async_render(data)
+                _tmpl2 = self.templates.get(hub.id, {}).get(port, hub.def_response)
+                template2: Template = _tmpl2  # type: ignore[assignment]
+                if template2 is not None:
+                    template2.hass = hass
+                    ret = template2.async_render(data)
             if hub.update_all and update_all:
                 asyncio.create_task(self.later_update(hub))
         _LOGGER.debug('response %s', ret)
-        Response(body='' if hub.fake_response else ret, content_type='text/plain')
+        response = Response(body='' if hub.fake_response else ret, content_type='text/plain')
 
         if hub.fake_response and 'value' not in data and 'pt' in data and port in hub.binary_sensors:
             if 'd' in ret:
                 await hub.request(pt=port, cmd=ret)
             else:
                 await hub.request(cmd=ret)
-        return ret
+        return response
 
     async def later_restore(self, hub):
         """

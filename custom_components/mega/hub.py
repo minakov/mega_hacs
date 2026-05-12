@@ -2,6 +2,7 @@ import asyncio
 import logging
 from collections import defaultdict
 from datetime import datetime, timedelta
+from typing import Optional
 
 import aiohttp
 import typing
@@ -68,16 +69,16 @@ class MegaD:
         password: str,
         lg: logging.Logger,
         id: str,
-        config: ConfigEntry = None,
-        mqtt_id: str = None,
+        config: Optional[ConfigEntry] = None,
+        mqtt_id: Optional[str] = None,
         scan_interval=60,
         port_to_scan=0,
         nports=38,
         update_all: bool = True,
         poll_outs: bool = False,
         fake_response: bool = True,
-        force_d: bool = None,
-        allow_hosts: str = None,
+        force_d: Optional[bool] = None,
+        allow_hosts: Optional[str] = None,
         protected=True,
         restore_on_restart=False,
         extenders=None,
@@ -86,7 +87,7 @@ class MegaD:
         i2c_sensors=None,
         new_naming=False,
         update_time=False,
-        smooth: list = None,
+        smooth: Optional[list] = None,
         **kwargs,
     ):
         """Initialize."""
@@ -113,7 +114,7 @@ class MegaD:
         self.update_all = update_all if update_all is not None else True
         self.nports = nports
         self.fake_response = fake_response
-        self.loop: asyncio.AbstractEventLoop = None
+        self.loop: Optional[asyncio.AbstractEventLoop] = None
         self.hass = hass
         self.host = host
         self.sec = password
@@ -134,7 +135,7 @@ class MegaD:
         self.port_to_scan = port_to_scan
         self.last_update = datetime.now()
         self._callbacks: typing.DefaultDict[
-            int, typing.List[typing.Callable[[dict], typing.Coroutine]]
+            int, typing.List[typing.Callable[[dict], None]]
         ] = defaultdict(list)
         self._loop = loop
         self._customize = None
@@ -163,8 +164,8 @@ class MegaD:
         try:
             if DOMAIN in hass.data:
                 if allow_hosts is not None:
-                    allow_hosts = set(allow_hosts.split(";"))
-                    hass.data[DOMAIN][CONF_HTTP].allowed_hosts |= allow_hosts
+                    _allow_hosts = set(allow_hosts.split(";"))
+                    hass.data[DOMAIN][CONF_HTTP].allowed_hosts |= _allow_hosts
                 hass.data[DOMAIN][CONF_HTTP].protected = protected
         except Exception:
             self.lg.exception("while setting allowed hosts")
@@ -198,12 +199,12 @@ class MegaD:
             ports.append(x.port)
 
     @property
-    def customize(self):
+    def customize(self) -> dict:
         if self._customize is None:
             c = self.hass.data.get(DOMAIN, {}).get(CONF_CUSTOM) or {}
             c = c.get(self.id) or {}
             self._customize = c
-        return self._customize
+        return self._customize or {}
 
     @property
     def force_d(self):
@@ -276,20 +277,23 @@ class MegaD:
         await self._get_ds2413()
         return self.values
 
-    async def get_mqtt_id(self):
+    async def get_mqtt_id(self) -> str:
         async with aiohttp.request(
             "get", f"http://{self.host}/{self.sec}/?cf=2"
         ) as req:
             data = await req.text(encoding="iso-8859-5")
-            data = BeautifulSoup(data, features="lxml")
-            _id = data.find(attrs={"name": "mdid"})
+            soup = BeautifulSoup(data, features="lxml")
+            _id = soup.find(attrs={"name": "mdid"})
             if _id:
-                _id = _id["value"]
-            return _id or "megad/" + self.host.split(".")[-1]
+                return str(_id["value"])
+            return "megad/" + self.host.split(".")[-1]
 
-    async def get_fw(self):
+    async def get_fw(self) -> str:
         data = await self.request()
-        return PATT_FW.search(data).groups()[0]
+        if data is None:
+            return ""
+        m = PATT_FW.search(data)
+        return m.groups()[0] if m else ""
 
     async def send_command(self, port=None, cmd=None):
         return await self.request(pt=port, cmd=cmd)
@@ -371,12 +375,14 @@ class MegaD:
 
     @property
     def ports(self):
-        return {e.port for e in self.entities}
+        return {e.port for e in self.entities if not isinstance(e.port, list)}
 
     async def get_all_ports(self, only_out=False, check_skip=False):
         try:
             ret = await self.request(cmd="all")
         except asyncio.TimeoutError:
+            return
+        if ret is None:
             return
         for port, x in enumerate(ret.split(";")):
             if port in self.ds2413_ports:
@@ -429,7 +435,7 @@ class MegaD:
             self.lg.warning(f"could not parse json ({msg.payload}): {exc}")
             return
         finally:
-            asyncio.run_coroutine_threadsafe(self._notify(port, value), self.loop)
+            asyncio.run_coroutine_threadsafe(self._notify(port, value), self._loop)
 
     def subscribe(self, port, callback):
         port = int_ignore(port)
@@ -457,6 +463,8 @@ class MegaD:
 
     async def scan_port(self, port):
         data = await self.request(pt=port)
+        if data is None:
+            return None
         return parse_config(data)
 
     async def scan_ports(self, nports=37):
@@ -476,6 +484,8 @@ class MegaD:
             values = await self.request(pt=port, cmd="get")
         except asyncio.TimeoutError:
             return
+        if values is None:
+            return {}
         ret = {}
         for i, x in enumerate(values.split(";")):
             ret[f"{port}e{i}"] = x
@@ -506,8 +516,8 @@ class MegaD:
             await asyncio.sleep(delay)
         return ret
 
-    async def get_config(self, nports=37):
-        ret = defaultdict(lambda: defaultdict(list))
+    async def get_config(self, nports=37) -> dict:
+        ret: typing.Dict[str, typing.Any] = defaultdict(lambda: defaultdict(list))
         ret["mqtt_id"] = await self.get_mqtt_id()
         ret["extenders"] = extenders = []
         ret["ext_in"] = ext_int = {}
@@ -531,6 +541,8 @@ class MegaD:
                 _data = await self.get_port(
                     port=port, force_http=True, http_cmd="list", conv=False
                 )
+                if _data is None:
+                    continue
                 data = _data.get("value", {})
                 if not isinstance(data, dict):
                     self.lg.warning(
@@ -559,9 +571,13 @@ class MegaD:
                 if cfg.inta:
                     ext_int[int_ignore(cfg.inta)] = port
                 values = await self.request(pt=port, cmd="get")
+                if values is None:
+                    continue
                 values = values.split(";")
                 for n in range(len(values)):
                     ext_page = await self.request(pt=port, ext=n)
+                    if ext_page is None:
+                        continue
                     ext_cfg = parse_config(ext_page)
                     pt = f"{port}e{n}" if not self.new_naming else f"{port:02d}e{n:02d}"
                     if ext_cfg.ety == "1":
@@ -573,11 +589,15 @@ class MegaD:
             elif cfg == PCA9685:
                 extenders.append(port)
                 values = await self.request(pt=port, cmd="get")
+                if values is None:
+                    continue
                 values = values.split(";")
                 for n in range(len(values)):
                     pt = f"{port}e{n}"
                     name = pt if not self.new_naming else f"{port:02}e{n:02}"
                     port_type = await self.request(pt=port, ext=f"{n}")
+                    if port_type is None:
+                        continue
                     port_mode = get_ext_mode(port_type)
                     if port_mode == '0':
                         ret["light"][pt].append(
@@ -591,10 +611,12 @@ class MegaD:
                         ret["light"][pt].append({})
             if cfg.pty == "4":  # and (cfg.gr == '0' or _cust.get(CONF_FORCE_I2C_SCAN))
                 # i2c в режиме ANY
-                scan = cfg.src.find("a", text="I2C Scan")
+                scan = cfg.src.find("a", text="I2C Scan") if cfg.src is not None else None
                 self.lg.debug(f"find scan link: %s", scan)
                 if scan is not None:
                     page = await self.request(pt=port, cmd="scan")
+                    if page is None:
+                        continue
                     req, parsed = parse_scan_page(page)
                     self.lg.debug(f"scan results: %s", (req, parsed))
                     ret["i2c"][port].extend(parsed)
@@ -633,7 +655,7 @@ class MegaD:
                     values = {TEMP: values}
                 elif not isinstance(values, dict):
                     if cfg.pty == "4" and cfg.d in I2C_DEVICE_TYPES:
-                        values = {I2C_DEVICE_TYPES.get(cfg.m): values}
+                        values = {I2C_DEVICE_TYPES.get(cfg.m or ""): values}
                     else:
                         values = {None: values}
                 for key in values:
@@ -641,8 +663,8 @@ class MegaD:
                     ret["sensor"][port].append(
                         dict(
                             key=key,
-                            unit_of_measurement=UNITS.get(key, UNITS[TEMP]),
-                            device_class=CLASSES.get(key, CLASSES[TEMP]),
+                            unit_of_measurement=UNITS.get(key, UNITS[TEMP]),  # type: ignore[arg-type]
+                            device_class=CLASSES.get(key, CLASSES[TEMP]),  # type: ignore[arg-type]
                             id_suffix=key,
                             http_cmd=http_cmd,
                         )
@@ -662,6 +684,8 @@ class MegaD:
 
     async def reload(self, reload_entry=True):
         new = await self.get_config(nports=self.nports)
+        if self.config is None:
+            return new
         cfg = dict(self.config.data)
         for x in REMOVE_CONFIG:
             cfg.pop(x, None)
@@ -710,7 +734,7 @@ class MegaD:
         :param chip: кол-во чипов для ws-лент
         :return:
         """
-        if can_smooth_hardware:
+        if can_smooth_hardware and max_values is not None:
             for i, (pt, from_, to_) in enumerate(config):
                 pct = abs(from_ - to_) / max_values[i]
                 tm = max([round(time / pct), 1])
@@ -738,22 +762,22 @@ class MegaD:
                     return
                 continue
             if not ws:
-                cmd = dict(
+                _cmd = dict(
                     cmd=";".join(
                         [f"{pt}:{_next_val[i]}" for i, (pt, _, _) in enumerate(config)]
                     )
                 )
-                await self.request(**cmd)
+                await self.request(**_cmd)  # type: ignore[arg-type]
             else:
                 # для адресных лент
-                cmd = dict(
+                _cmd = dict(
                     pt=config[0][0],
                     chip=chip,
                     ws="".join(
                         [hex(x).split("x")[1].rjust(2, "0").upper() for x in _next_val]
                     ),
                 )
-                await self.request(**cmd)
+                await self.request(**_cmd)  # type: ignore[arg-type]
 
             if _next_val == last_step:
                 return

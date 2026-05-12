@@ -1,5 +1,6 @@
 import typing
 from dataclasses import dataclass, astuple
+from typing import Optional
 from urllib.parse import parse_qsl, urlparse
 from bs4 import BeautifulSoup
 
@@ -26,12 +27,12 @@ class DeviceType:
 def parse_scan_page(page: str):
     ret = []
     req = []
-    page = BeautifulSoup(page, features="lxml")
-    for x in page.find_all('a'):
+    soup = BeautifulSoup(page, features="lxml")
+    for x in soup.find_all('a'):
         params = x.get('href')
         if params is None:
             continue
-        params = dict(parse_qsl(urlparse(params).query))
+        params = dict(parse_qsl(urlparse(str(params)).query))
         dev = params.get('i2c_dev')
         if dev is None:
             continue
@@ -45,7 +46,7 @@ def parse_scan_page(page: str):
                 continue
             elif isinstance(c, Request):
                 if c.delay:
-                    _params['delay'] = c.delay
+                    _params['delay'] = c.delay  # type: ignore[assignment]
                 req.append(_params)
                 continue
             elif isinstance(c, DeviceType):
@@ -62,7 +63,7 @@ def parse_scan_page(page: str):
             else:
                 _dev = dev
             if i > 0:
-                _params['i2c_par'] = i
+                _params['i2c_par'] = i  # type: ignore[assignment]
 
             ret.append({
                 'id_suffix': _dev,
@@ -80,7 +81,7 @@ class Skip:
 
 @dataclass
 class Request:
-    delay: float = None
+    delay: Optional[float] = None
 
 
 i2c_classes = {

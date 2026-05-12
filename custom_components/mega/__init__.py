@@ -37,23 +37,23 @@ LED_LIGHT = \
                     msg='ports must be [R, G, B] or [R, G, B, W] of integers 0..255'
                 ),
                 vol.Optional(CONF_NAME): str,
-                vol.Optional(CONF_WHITE_SEP, default=True): bool,
-                vol.Optional(CONF_SMOOTH, default=1): cv.time_period_seconds,
+                vol.Optional(CONF_WHITE_SEP, default=True): bool,  # type: ignore[call-arg]
+                vol.Optional(CONF_SMOOTH, default=1): cv.time_period_seconds,  # type: ignore[call-arg]
             },
             {
                 vol.Required(CONF_PORT): int,
                 vol.Required(CONF_WS28XX): True,
-                vol.Optional(CONF_CHIP, default=100): int,
-                vol.Optional(CONF_ORDER, default='rgb'): vol.Any(*RGB_COMBINATIONS, msg=f'order must be one of {RGB_COMBINATIONS}'),
-                vol.Optional(CONF_SMOOTH, default=1): cv.time_period_seconds,
+                vol.Optional(CONF_CHIP, default=100): int,  # type: ignore[call-arg]
+                vol.Optional(CONF_ORDER, default='rgb'): vol.Any(*RGB_COMBINATIONS, msg=f'order must be one of {RGB_COMBINATIONS}'),  # type: ignore[call-arg]
+                vol.Optional(CONF_SMOOTH, default=1): cv.time_period_seconds,  # type: ignore[call-arg]
                 vol.Optional(CONF_NAME): str,
             },
         )
     }
 
 CUSTOMIZE_PORT = {
-    vol.Optional(CONF_SKIP, description='исключить порт из сканирования', default=False): bool,
-    vol.Optional(CONF_FILL_NA, default='last'): vol.Any(
+    vol.Optional(CONF_SKIP, description='исключить порт из сканирования', default=False): bool,  # type: ignore[call-arg]
+    vol.Optional(CONF_FILL_NA, default='last'): vol.Any(  # type: ignore[call-arg]
       'last',
       'none'
     ),
@@ -61,7 +61,7 @@ CUSTOMIZE_PORT = {
         vol.Range(0, 255),
         vol.Range(0, 255),
     ],
-    vol.Optional(CONF_INVERT, default=False): bool,
+    vol.Optional(CONF_INVERT, default=False): bool,  # type: ignore[call-arg]
     vol.Optional(CONF_NAME): vol.Any(str, {
         vol.Required(str): str
     }),
@@ -79,7 +79,7 @@ CUSTOMIZE_PORT = {
         description='шаблон ответа когда на этот порт приходит'
                     'сообщение из меги '): cv.template,
     vol.Optional(CONF_ACTION): cv.script_action, # пока не реализовано
-    vol.Optional(CONF_GET_VALUE, default=True): bool,
+    vol.Optional(CONF_GET_VALUE, default=True): bool,  # type: ignore[call-arg]
     vol.Optional(CONF_CONV_TEMPLATE): cv.template,
     vol.Optional(CONF_VALUE_TEMPLATE): cv.template,
     vol.Optional(CONF_FORCE_I2C_SCAN): bool,
@@ -124,11 +124,11 @@ CONFIG_SCHEMA = vol.Schema(
                 CUSTOMIZE_DS2413
             )},
             vol.Optional(vol.Any(str, int), description='id меги из веб-интерфейса'): {
-                vol.Optional(CONF_FORCE_D, description='Принудительно слать d после срабатывания входа', default=False): bool,
+                vol.Optional(CONF_FORCE_D, description='Принудительно слать d после срабатывания входа', default=False): bool,  # type: ignore[call-arg]
                 vol.Optional(
                     CONF_DEF_RESPONSE,
                     description='Ответ по умолчанию',
-                    default=None
+                    default=None  # type: ignore[call-arg]
                 ): vol.Any(cv.template, None),
                 vol.Optional(CONF_LED): LED_LIGHT,
                 vol.Optional(vol.Any(int, extender), description='номер порта'): vol.Any(
@@ -217,18 +217,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     return True
 
 
-async def updater(hass: HomeAssistant, entry: ConfigEntry):
+async def updater(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """
     Обновляется конфигурация
     :param hass:
     :param entry:
     :return:
     """
-    # hub: MegaD = hass.data[DOMAIN][entry.data[CONF_ID]]
-    # hub.poll_interval = entry.options[CONF_SCAN_INTERVAL]
-    # hub.port_to_scan = entry.options.get(CONF_PORT_TO_SCAN, 0)
     await hass.config_entries.async_reload(entry.entry_id)
-    return True
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -236,7 +232,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     id = entry.data.get('id', entry.entry_id)
     hub: MegaD = hass.data[DOMAIN].get(id)
     if hub is None:
-        return True
+        return
     _LOGGER.debug(f'remove {id}')
     _hubs.pop(id, None)
     hass.data[DOMAIN].pop(id, None)
@@ -246,10 +242,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     task: asyncio.Task = _POLL_TASKS.pop(id, None)
     if task is not None:
         task.cancel()
-    if hub is None:
-        return True
     await hub.stop()
-    return True
 
 async_unload_entry = async_remove_entry
 

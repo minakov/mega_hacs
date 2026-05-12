@@ -1,5 +1,6 @@
 """Platform for light integration."""
 import logging
+import typing
 import voluptuous as vol
 import struct
 
@@ -43,7 +44,7 @@ _ITEM = {
         W1,
         W1BUS,
     ),
-    vol.Optional(CONF_KEY, default=''): str,
+    vol.Optional(CONF_KEY, default=''): str,  # type: ignore[call-arg]
 }
 PLATFORM_SCHEMA = SENSOR_SCHEMA.extend(
     {
@@ -78,7 +79,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry, asyn
                     config_entry=config_entry,
                     **data,
                 )
-                if '<' in sensor.name:
+                if sensor.name and '<' in sensor.name:
                     continue
                 devices.append(sensor)
 
@@ -104,7 +105,7 @@ class FilterBadValues(MegaPushEntity, SensorEntity):
                 or (
                     self._prev_value is not None
                     and self.filter_scale is not None
-                    and (abs(value - self._prev_value) / self._prev_value > self.filter_scale)
+                    and (abs(value - self._prev_value) / self._prev_value > self.filter_scale)  # type: ignore[operator]
                     )
             ):
                 value = None
@@ -143,13 +144,13 @@ class MegaI2C(FilterBadValues):
     def __init__(
             self,
             *args,
-            device_class: str,
-            params: dict,
-            unit_of_measurement: str = None,
+            device_class: typing.Optional[str] = None,
+            params: typing.Optional[dict] = None,
+            unit_of_measurement: typing.Optional[str] = None,
             **kwargs
     ):
         self._device_class = device_class
-        self._params = tuple(params.items())
+        self._params = tuple(params.items()) if params else ()
         self._unit_of_measurement = unit_of_measurement
         super().__init__(*args, **kwargs)
 
@@ -164,7 +165,7 @@ class MegaI2C(FilterBadValues):
 
     @property
     def extra_state_attributes(self):
-        attrs = super().extra_state_attributes or {}
+        attrs = dict(super().extra_state_attributes or {})
         attrs.update({
             'i2c_id': self.id_suffix,
         })
@@ -184,12 +185,12 @@ class MegaI2C(FilterBadValues):
             ret = self.mega.values.get(self._params)
             if self.customize.get(CONF_HEX_TO_FLOAT):
                 try:
-                    ret = struct.unpack('!f', bytes.fromhex(ret))[0]
+                    ret = struct.unpack('!f', bytes.fromhex(str(ret)))[0]
                 except:
                     self.lg.warning(f'could not convert {ret} form hex to float')
-            tmpl: Template = self.customize.get(CONF_CONV_TEMPLATE, self.customize.get(CONF_VALUE_TEMPLATE))
+            tmpl = self.customize.get(CONF_CONV_TEMPLATE, self.customize.get(CONF_VALUE_TEMPLATE))
             try:
-                ret = float(ret)
+                ret = float(ret)  # type: ignore[arg-type]
                 if tmpl is not None and self.hass is not None:
                     tmpl.hass = self.hass
                     ret = tmpl.async_render({'value': ret})
@@ -201,10 +202,6 @@ class MegaI2C(FilterBadValues):
         except Exception:
             lg.exception('while parsing value')
             return None
-
-    @property
-    def device_class(self):
-        return self._device_class
 
     @property
     def state_class(self):
@@ -229,8 +226,8 @@ class Mega1WSensor(FilterBadValues):
         super().__init__(*args, **kwargs)
         self.key = key
         self._value = None
-        self._device_class = device_class
-        self._unit_of_measurement = unit_of_measurement
+        self._device_class: typing.Optional[str] = device_class
+        self._unit_of_measurement: typing.Optional[str] = unit_of_measurement
         self.mega.sensors.append(self)
         self.prev_value = None
 
@@ -292,19 +289,19 @@ class Mega1WSensor(FilterBadValues):
             elif ret is None and self.fill_na == 'fill_na' and self._state is not None:
                 ret = self._state.state
             try:
-                ret = float(ret)
+                ret = float(ret)  # type: ignore[arg-type]
                 ret = str(ret)
             except:
                 self.lg.debug(f'could not convert to float "{ret}"')
                 ret = self.prev_value
             if self.customize.get(CONF_HEX_TO_FLOAT):
                 try:
-                    ret = struct.unpack('!f', bytes.fromhex(ret))[0]
+                    ret = struct.unpack('!f', bytes.fromhex(str(ret)))[0]
                 except:
                     self.lg.warning(f'could not convert {ret} form hex to float')
-            tmpl: Template = self.customize.get(CONF_CONV_TEMPLATE, self.customize.get(CONF_VALUE_TEMPLATE))
+            tmpl = self.customize.get(CONF_CONV_TEMPLATE, self.customize.get(CONF_VALUE_TEMPLATE))
             try:
-                ret = float(ret)
+                ret = float(ret)  # type: ignore[arg-type]
                 if tmpl is not None and self.hass is not None:
                     tmpl.hass = self.hass
                     ret = tmpl.async_render({'value': ret})

@@ -60,17 +60,17 @@ class PriorityLock(asyncio.Lock):
                 This method blocks until the lock is unlocked, then sets it to
                 locked and returns True.
                 """
-        if (not self._locked and (self._waiters is None or
-                                  all(w.cancelled() for _, _, w in self._waiters))):
+        if (not self._locked and (self._waiters is None or  # type: ignore[union-attr]
+                                  all(w.cancelled() for _, _, w in self._waiters))):  # type: ignore[union-attr]
             self._locked = True
             return True
 
         if self._waiters is None:
-            self._waiters = []
+            self._waiters = []  # type: ignore[assignment]
 
         fut = self._loop.create_future()
         cnt = next(self._cnt)
-        heappush(self._waiters, (priority, cnt, fut))
+        heappush(self._waiters, (priority, cnt, fut))  # type: ignore[arg-type]
 
         # Finally block should be called before the CancelledError
         # handling as we don't want CancelledError to call
@@ -79,7 +79,7 @@ class PriorityLock(asyncio.Lock):
             try:
                 await fut
             finally:
-                self._waiters.remove((priority, cnt, fut))
+                self._waiters.remove((priority, cnt, fut))  # type: ignore[union-attr,arg-type]
         except asyncio.exceptions.CancelledError:
             if not self._locked:
                 self._wake_up_first()

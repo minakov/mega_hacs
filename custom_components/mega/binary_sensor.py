@@ -57,7 +57,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry, asyn
             continue
         hub.lg.debug(f'add binary_sensor on port %s', port)
         sensor = MegaBinarySensor(mega=hub, port=port, config_entry=config_entry)
-        if '<' in sensor.name:
+        if sensor.name and '<' in sensor.name:
             continue
         devices.append(sensor)
     async_add_devices(devices)
@@ -73,7 +73,7 @@ class MegaBinarySensor(BinarySensorEntity, MegaPushEntity):
         self._click_task = None
 
     async def _click(self):
-        await self.customize.get
+        pass
 
     @property
     def state_attributes(self):
@@ -95,6 +95,7 @@ class MegaBinarySensor(BinarySensorEntity, MegaPushEntity):
                 return val in ['ON', '1'] if not self.invert else val in ['OFF', '0']
             elif isinstance(val, int):
                 return val != 1 if not self.invert else val == 1
+        return False
 
     def _update(self, payload: dict):
         self.mega.values[self.port] = payload

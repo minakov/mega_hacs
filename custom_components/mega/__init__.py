@@ -244,7 +244,23 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         task.cancel()
     await hub.stop()
 
-async_unload_entry = async_remove_entry
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Unload a config entry (called on reload/disable — not full removal)."""
+    id = entry.data.get('id', entry.entry_id)
+    sub = _subs.pop(entry.entry_id, None)
+    if sub is not None:
+        sub()
+    hub: MegaD = hass.data[DOMAIN].get(id)
+    if hub is not None:
+        await hub.stop()
+    results = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    _hubs.pop(entry.entry_id, None)
+    hass.data[DOMAIN].pop(id, None)
+    hass.data[DOMAIN][CONF_ALL].pop(id, None)
+    task: asyncio.Task = _POLL_TASKS.pop(id, None)
+    if task is not None:
+        task.cancel()
+    return results
 
 
 async def async_migrate_entry(hass, config_entry: ConfigEntry):

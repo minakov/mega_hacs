@@ -167,7 +167,10 @@ class MegaView(HomeAssistantView):
         await asyncio.sleep(0.2)
         if hub.restore_on_restart:
             await hub.restore_states()
-        await hub.reload()
+        try:
+            await hub.reload()
+        except Exception as e:
+            _LOGGER.warning("Could not reload hub %s: %s", hub.id, e)
 
     async def later_update(self, hub):
         await asyncio.sleep(1)

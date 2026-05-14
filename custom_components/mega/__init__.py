@@ -18,7 +18,7 @@ from .const import DOMAIN, CONF_INVERT, CONF_RELOAD, PLATFORMS, CONF_PORTS, CONF
     CONF_CONV_TEMPLATE, CONF_ALL, CONF_FORCE_D, CONF_DEF_RESPONSE, CONF_FORCE_I2C_SCAN, CONF_HEX_TO_FLOAT, \
     RGB_COMBINATIONS, CONF_WS28XX, CONF_ORDER, CONF_SMOOTH, CONF_LED, CONF_WHITE_SEP, CONF_CHIP, CONF_RANGE, \
     CONF_FILTER_VALUES, CONF_FILTER_SCALE, CONF_FILTER_LOW, CONF_FILTER_HIGH, CONF_FILL_NA, CONF_MEGA_ID, CONF_ADDR, \
-    CONF_1WBUS
+    CONF_1WBUS, CONF_RAW_I2C, CONF_SDA, CONF_SCL
 from .hub import MegaD
 from .config_flow import ConfigFlow
 from .http import MegaView
@@ -114,6 +114,14 @@ OWBUS = vol.Schema({
     vol.Required(CONF_ADDR): [str],
 })
 
+RAW_I2C_DEVICE = vol.Schema({
+    vol.Required(CONF_SDA): vol.Coerce(str),
+    vol.Required(CONF_SCL): vol.Coerce(str),
+    vol.Required('address'): vol.Coerce(int),
+    vol.Optional('type', default='scd41'): vol.In(['scd41']),  # type: ignore[call-arg]
+    vol.Optional(CONF_NAME): str,
+})
+
 CONFIG_SCHEMA = vol.Schema(
     {
         DOMAIN: {
@@ -139,6 +147,7 @@ CONFIG_SCHEMA = vol.Schema(
                 vol.Optional(CONF_FILTER_SCALE): vol.Coerce(float),
                 vol.Optional(CONF_FILTER_LOW): vol.Coerce(float),
                 vol.Optional(CONF_FILTER_HIGH): vol.Coerce(float),
+                vol.Optional(CONF_RAW_I2C): [RAW_I2C_DEVICE],
             },
             vol.Optional(CONF_1WBUS): [OWBUS]
         }

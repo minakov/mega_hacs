@@ -54,6 +54,9 @@ CONF_FILTER_LOW = 'filter_low'
 CONF_FILTER_HIGH = 'filter_high'
 CONF_1WBUS = '1wbus'
 CONF_ADDR = 'addr'
+CONF_RAW_I2C = 'raw_i2c'
+CONF_SDA = 'sda'
+CONF_SCL = 'scl'
 PLATFORMS = [
     Platform.LIGHT,
     Platform.SWITCH,

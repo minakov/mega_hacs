@@ -5,7 +5,7 @@ import voluptuous as vol
 import struct
 
 from homeassistant.components.sensor import (
-    PLATFORM_SCHEMA as SENSOR_SCHEMA, SensorEntity, SensorStateClass
+    PLATFORM_SCHEMA as SENSOR_SCHEMA, SensorDeviceClass, SensorEntity, SensorStateClass
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
@@ -15,12 +15,16 @@ from homeassistant.const import (
     CONF_ID,
     CONF_TYPE, CONF_UNIT_OF_MEASUREMENT, CONF_VALUE_TEMPLATE,
     CONF_DEVICE_CLASS,
+    PERCENTAGE,
+    CONCENTRATION_PARTS_PER_MILLION,
+    UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.template import Template
 from .entities import MegaPushEntity
 from .const import CONF_KEY, TEMP, HUM, W1, W1BUS, CONF_CONV_TEMPLATE, CONF_HEX_TO_FLOAT, DOMAIN, CONF_CUSTOM, \
-    CONF_SKIP, CONF_FILTER_VALUES, CONF_FILTER_SCALE, CONF_FILTER_LOW, CONF_FILTER_HIGH, CONF_FILL_NA
+    CONF_SKIP, CONF_FILTER_VALUES, CONF_FILTER_SCALE, CONF_FILTER_LOW, CONF_FILTER_HIGH, CONF_FILL_NA, \
+    CONF_RAW_I2C, CONF_SDA, CONF_SCL
 from .hub import MegaD
 import re
 
@@ -82,6 +86,29 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry, asyn
                 if sensor.name and '<' in sensor.name:
                     continue
                 devices.append(sensor)
+
+    raw_i2c_list = hass.data.get(DOMAIN, {}).get(CONF_CUSTOM, {}).get(mid, {}).get(CONF_RAW_I2C, [])
+    for cfg in raw_i2c_list:
+        sda = str(cfg.get(CONF_SDA, ''))
+        scl = str(cfg.get(CONF_SCL, ''))
+        address = int(cfg.get('address', 0))
+        sensor_type = cfg.get('type', 'scd41')
+        name_prefix = cfg.get(CONF_NAME)
+        synthetic_port = f"i2c_{sda}"
+        for key in _SCD41_META:
+            entity_name = f"{name_prefix}_{key}" if name_prefix else None
+            devices.append(MegaRawI2CSensor(
+                mega=hub,
+                port=synthetic_port,
+                config_entry=config_entry,
+                id_suffix=f"scd41_{key}",
+                name=entity_name,
+                sda=sda,
+                scl=scl,
+                address=address,
+                key=key,
+                sensor_type=sensor_type,
+            ))
 
     async_add_devices(devices)
 
@@ -325,6 +352,66 @@ class Mega1WSensor(FilterBadValues):
             except:
                 pass
         return c or n
+
+
+_SCD41_META: dict[str, tuple] = {
+    # key: (device_class, unit, state_class)
+    "co2":  (SensorDeviceClass.CO2,         CONCENTRATION_PARTS_PER_MILLION, SensorStateClass.MEASUREMENT),
+    "temp": (SensorDeviceClass.TEMPERATURE,  UnitOfTemperature.CELSIUS,       SensorStateClass.MEASUREMENT),
+    "rh":   (SensorDeviceClass.HUMIDITY,     PERCENTAGE,                       SensorStateClass.MEASUREMENT),
+}
+
+
+class MegaRawI2CSensor(FilterBadValues):
+    """Sensor entity backed by a software bit-bang I2C read (e.g. SCD41).
+
+    Values are written into hub.values[(sda, scl, address, key)] by the
+    hub's poll() loop via raw_i2c.read_scd41(); this class only reads them.
+    """
+
+    def __init__(
+        self,
+        sda: str,
+        scl: str,
+        address: int,
+        key: str,
+        sensor_type: str = "scd41",
+        *args,
+        **kwargs,
+    ) -> None:
+        self._sda = sda
+        self._scl = scl
+        self._address = address
+        self._key = key
+        self._sensor_type = sensor_type
+        super().__init__(*args, **kwargs)
+
+    @property
+    def _value_key(self) -> tuple:
+        return (self._sda, self._scl, self._address, self._key)
+
+    @property
+    def native_value(self):
+        val = self.mega.values.get(self._value_key)
+        if val is None:
+            return None
+        try:
+            val = self.filter_value(float(val))
+            return str(val) if val is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    @property
+    def device_class(self):
+        return _SCD41_META.get(self._key, (None, None, None))[0]
+
+    @property
+    def native_unit_of_measurement(self):
+        return _SCD41_META.get(self._key, (None, None, None))[1]
+
+    @property
+    def state_class(self):
+        return _SCD41_META.get(self._key, (None, None, SensorStateClass.MEASUREMENT))[2]
 
 
 _constructors = {

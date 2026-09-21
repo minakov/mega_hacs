@@ -225,6 +225,8 @@ async def read_scd41(
     result: dict[str, float | int] = {}
 
     r = await i2c.write_read(address, _SCD41_MEASURE_CMD, 9, delay=_SCD41_MEASURE_DELAY)
+    if all(b == 0xFF for b in r):
+        raise I2CError("no answer from SCD41 (bus reads all ones)")
 
     if r[2] != _crc8(r[0:2]):
         _LOGGER.debug("SCD41 CO2 CRC error  sda=%s scl=%s addr=0x%02x frame=%s", sda, scl, address, _hex(r))

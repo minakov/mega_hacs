@@ -44,11 +44,6 @@ _CRC8_POLY = 0x31
 # I2C lock priority - lower number wins; 100 lets normal requests (-1..0) go first.
 _I2C_PRIORITY = 100
 
-# Pause between raising SCL and sampling SDA.  The controller reports input
-# state with filtering latency; sampling too early returned the previous bit
-# roughly once per 300 bits (random CRC failures).
-_SAMPLE_DELAY = 0.03
-
 # Value keys produced by the drivers
 KEY_CO2 = "co2"
 KEY_TEMP = "temp"
@@ -95,7 +90,7 @@ class SoftI2C:
     async def _dir(self, pin: str, out: bool) -> None:
         await self._r(pt=pin, dir=1 if out else 0)
 
-    async def _get_once(self, pin: str) -> str:
+    async def _get(self, pin: str) -> str:
         """Sample an input pin.  Re-reads (harmless) if the answer is not ON/OFF."""
         val = ""
         for attempt in range(3):
@@ -104,21 +99,6 @@ class SoftI2C:
                 return val
             _LOGGER.debug("unexpected answer %r while sampling pin %s (try %s)", val, pin, attempt + 1)
         return val
-
-    async def _get(self, pin: str) -> str:
-        """Sample a data bit while SCL is high.
-
-        The controller reports input state with some filtering latency, which
-        showed up as sporadic single-bit read errors (~1 per 300 bits).  Two
-        samples must agree; otherwise a third, later sample wins.
-        """
-        a = await self._get_once(pin)
-        b = await self._get_once(pin)
-        if a == b:
-            return a
-        c = await self._get_once(pin)
-        _LOGGER.debug("pin %s samples disagree (%s, %s) -> %s", pin, a, b, c)
-        return c
 
     async def _init(self) -> None:
         """Set both pins to output/high and recover a possibly stuck bus.
@@ -174,7 +154,6 @@ class SoftI2C:
         bits = 0
         for _ in range(8):
             await self._r(cmd=f"{self._scl}:1")
-            await asyncio.sleep(_SAMPLE_DELAY)
             val = await self._get(self._sda)
             # ON = transistor conducting = line LOW = I2C logical 0
             bits = (bits << 1) | (0 if val == "ON" else 1)
@@ -248,17 +227,17 @@ async def read_scd41(
     r = await i2c.write_read(address, _SCD41_MEASURE_CMD, 9, delay=_SCD41_MEASURE_DELAY)
 
     if r[2] != _crc8(r[0:2]):
-        _LOGGER.warning("SCD41 CO2 CRC error  sda=%s scl=%s addr=0x%02x frame=%s", sda, scl, address, _hex(r))
+        _LOGGER.debug("SCD41 CO2 CRC error  sda=%s scl=%s addr=0x%02x frame=%s", sda, scl, address, _hex(r))
     else:
         result[KEY_CO2] = (r[0] << 8) | r[1]
 
     if r[5] != _crc8(r[3:5]):
-        _LOGGER.warning("SCD41 temp CRC error sda=%s scl=%s addr=0x%02x frame=%s", sda, scl, address, _hex(r))
+        _LOGGER.debug("SCD41 temp CRC error sda=%s scl=%s addr=0x%02x frame=%s", sda, scl, address, _hex(r))
     else:
         result[KEY_TEMP] = round(-45 + 175 * ((r[3] << 8) | r[4]) / 65535, 2)
 
     if r[8] != _crc8(r[6:8]):
-        _LOGGER.warning("SCD41 RH CRC error   sda=%s scl=%s addr=0x%02x frame=%s", sda, scl, address, _hex(r))
+        _LOGGER.debug("SCD41 RH CRC error   sda=%s scl=%s addr=0x%02x frame=%s", sda, scl, address, _hex(r))
     else:
         result[KEY_RH] = round(100 * ((r[6] << 8) | r[7]) / 65535, 2)
 
@@ -306,13 +285,13 @@ async def read_htu21d(
 
     raw = await _htu21d_measure(i2c, address, _HTU21D_TRIG_TEMP_NOHOLD)
     if raw is None:
-        _LOGGER.warning("HTU21D temp CRC error sda=%s scl=%s addr=0x%02x", sda, scl, address)
+        _LOGGER.debug("HTU21D temp CRC error sda=%s scl=%s addr=0x%02x", sda, scl, address)
     else:
         result[KEY_TEMP] = round(-46.85 + 175.72 * raw / 65536, 2)
 
     raw = await _htu21d_measure(i2c, address, _HTU21D_TRIG_HUM_NOHOLD)
     if raw is None:
-        _LOGGER.warning("HTU21D hum CRC error  sda=%s scl=%s addr=0x%02x", sda, scl, address)
+        _LOGGER.debug("HTU21D hum CRC error  sda=%s scl=%s addr=0x%02x", sda, scl, address)
     else:
         hum = -6 + 125 * raw / 65536
         result[KEY_HUM] = round(min(max(hum, 0.0), 100.0), 2)
@@ -526,7 +505,13 @@ def raw_i2c_value_key(sda: str, scl: str, sensor_type: str, key: str) -> tuple:
 
 
 async def poll_raw_i2c(hub: MegaD, cfg: dict) -> None:
-    """Read one ``raw_i2c`` YAML entry and store results in ``hub.values``."""
+    """Read one ``raw_i2c`` YAML entry and store results in ``hub.values``.
+
+    Bit-banged reads on MegaD-328 lose a word to a CRC error now and then
+    (~20 % of 9-byte SCD41 frames in practice).  When a device answered but
+    some values are missing, the read is repeated once; a warning is logged
+    only if values are still missing after the retry.
+    """
     sensor_type = cfg.get("type", TYPE_SCD41)
     driver = RAW_I2C_DRIVERS.get(sensor_type)
     if driver is None:
@@ -540,14 +525,28 @@ async def poll_raw_i2c(hub: MegaD, cfg: dict) -> None:
         light=cfg.get("light", LIGHT_AUTO),
         light_address=cfg.get("light_address"),
     )
-    try:
-        vals = await driver(hub, sda, scl, **kwargs)
-    except (I2CError, asyncio.TimeoutError) as exc:
-        _LOGGER.warning("raw I2C %s poll error sda=%s scl=%s: %s", sensor_type, sda, scl, exc)
-        return
-    except Exception:
-        _LOGGER.exception("raw I2C %s poll error sda=%s scl=%s", sensor_type, sda, scl)
-        return
+    expected = set(RAW_I2C_KEYS.get(sensor_type, ()))
+    vals: dict = {}
+    for attempt in range(2):
+        try:
+            got = await driver(hub, sda, scl, **kwargs)
+        except (I2CError, asyncio.TimeoutError) as exc:
+            _LOGGER.warning("raw I2C %s poll error sda=%s scl=%s: %s", sensor_type, sda, scl, exc)
+            return
+        except Exception:
+            _LOGGER.exception("raw I2C %s poll error sda=%s scl=%s", sensor_type, sda, scl)
+            return
+        vals.update(got)
+        if expected <= set(vals) or not got:
+            # complete, or nothing answered at all (device absent) - do not retry
+            break
+        _LOGGER.debug("raw I2C %s sda=%s scl=%s: partial frame %s, retrying", sensor_type, sda, scl, got)
+    missing = expected - set(vals)
+    if missing and vals:
+        _LOGGER.warning(
+            "raw I2C %s sda=%s scl=%s: no valid value for %s after retry",
+            sensor_type, sda, scl, ", ".join(sorted(missing)),
+        )
     _LOGGER.debug("raw I2C %s sda=%s scl=%s -> %s", sensor_type, sda, scl, vals)
     for k, v in vals.items():
         hub.values[raw_i2c_value_key(sda, scl, sensor_type, k)] = v

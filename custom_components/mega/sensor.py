@@ -17,6 +17,7 @@ from homeassistant.const import (
     CONF_DEVICE_CLASS,
     PERCENTAGE,
     CONCENTRATION_PARTS_PER_MILLION,
+    LIGHT_LUX,
     UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant
@@ -26,6 +27,7 @@ from .const import CONF_KEY, TEMP, HUM, W1, W1BUS, CONF_CONV_TEMPLATE, CONF_HEX_
     CONF_SKIP, CONF_FILTER_VALUES, CONF_FILTER_SCALE, CONF_FILTER_LOW, CONF_FILTER_HIGH, CONF_FILL_NA, \
     CONF_RAW_I2C, CONF_SDA, CONF_SCL
 from .hub import MegaD
+from .raw_i2c import RAW_I2C_KEYS, raw_i2c_value_key, KEY_CO2, KEY_TEMP, KEY_HUM, KEY_RH, KEY_LUX
 import re
 
 from .tools import int_ignore
@@ -91,21 +93,21 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry, asyn
     for cfg in raw_i2c_list:
         sda = str(cfg.get(CONF_SDA, ''))
         scl = str(cfg.get(CONF_SCL, ''))
-        address = int(cfg.get('address', 0))
         sensor_type = cfg.get('type', 'scd41')
         name_prefix = cfg.get(CONF_NAME)
         synthetic_port = f"i2c_{sda}"
-        for key in _SCD41_META:
+        # SDA/SCL are driven by software, they must not be polled as regular ports
+        hub.skip_ports |= {int_ignore(sda), int_ignore(scl)}
+        for key in RAW_I2C_KEYS.get(sensor_type, ()):
             entity_name = f"{name_prefix}_{key}" if name_prefix else None
             devices.append(MegaRawI2CSensor(
                 mega=hub,
                 port=synthetic_port,
                 config_entry=config_entry,
-                id_suffix=f"scd41_{key}",
+                id_suffix=f"{sensor_type}_{key}",
                 name=entity_name,
                 sda=sda,
                 scl=scl,
-                address=address,
                 key=key,
                 sensor_type=sensor_type,
             ))
@@ -354,28 +356,30 @@ class Mega1WSensor(FilterBadValues):
         return c or n
 
 
-_SCD41_META: dict[str, tuple] = {
-    # key: (device_class, unit, state_class)
-    "co2":  (SensorDeviceClass.CO2,         CONCENTRATION_PARTS_PER_MILLION, SensorStateClass.MEASUREMENT),
-    "temp": (SensorDeviceClass.TEMPERATURE,  UnitOfTemperature.CELSIUS,       SensorStateClass.MEASUREMENT),
-    "rh":   (SensorDeviceClass.HUMIDITY,     PERCENTAGE,                       SensorStateClass.MEASUREMENT),
+_RAW_I2C_META: dict[str, tuple] = {
+    # value key: (device_class, unit, state_class)
+    KEY_CO2:  (SensorDeviceClass.CO2,         CONCENTRATION_PARTS_PER_MILLION, SensorStateClass.MEASUREMENT),
+    KEY_TEMP: (SensorDeviceClass.TEMPERATURE, UnitOfTemperature.CELSIUS,       SensorStateClass.MEASUREMENT),
+    KEY_RH:   (SensorDeviceClass.HUMIDITY,    PERCENTAGE,                      SensorStateClass.MEASUREMENT),
+    KEY_HUM:  (SensorDeviceClass.HUMIDITY,    PERCENTAGE,                      SensorStateClass.MEASUREMENT),
+    KEY_LUX:  (SensorDeviceClass.ILLUMINANCE, LIGHT_LUX,                       SensorStateClass.MEASUREMENT),
 }
 
 
 class MegaRawI2CSensor(FilterBadValues):
-    """Sensor entity backed by a software bit-bang I2C read (e.g. SCD41).
+    """Sensor entity backed by a software (bit-bang) I2C driver from raw_i2c.py.
 
-    Values are written into hub.values[(sda, scl, address, key)] by the
-    hub's poll() loop via raw_i2c.read_scd41(); this class only reads them.
+    Values are written into hub.values by the hub's poll() loop via
+    raw_i2c.poll_raw_i2c(); this class only reads them.
     """
 
     def __init__(
         self,
         sda: str,
         scl: str,
-        address: int,
         key: str,
         sensor_type: str = "scd41",
+        address: typing.Optional[int] = None,
         *args,
         **kwargs,
     ) -> None:
@@ -388,7 +392,17 @@ class MegaRawI2CSensor(FilterBadValues):
 
     @property
     def _value_key(self) -> tuple:
-        return (self._sda, self._scl, self._address, self._key)
+        return raw_i2c_value_key(self._sda, self._scl, self._sensor_type, self._key)
+
+    @property
+    def extra_state_attributes(self):
+        attrs = dict(super().extra_state_attributes or {})
+        attrs.update({
+            'i2c_type': self._sensor_type,
+            'sda': self._sda,
+            'scl': self._scl,
+        })
+        return attrs
 
     @property
     def native_value(self):
@@ -403,15 +417,15 @@ class MegaRawI2CSensor(FilterBadValues):
 
     @property
     def device_class(self):
-        return _SCD41_META.get(self._key, (None, None, None))[0]
+        return _RAW_I2C_META.get(self._key, (None, None, None))[0]
 
     @property
     def native_unit_of_measurement(self):
-        return _SCD41_META.get(self._key, (None, None, None))[1]
+        return _RAW_I2C_META.get(self._key, (None, None, None))[1]
 
     @property
     def state_class(self):
-        return _SCD41_META.get(self._key, (None, None, SensorStateClass.MEASUREMENT))[2]
+        return _RAW_I2C_META.get(self._key, (None, None, SensorStateClass.MEASUREMENT))[2]
 
 
 _constructors = {

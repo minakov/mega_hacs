@@ -37,7 +37,7 @@ from .const import (
 from .entities import set_events_off, BaseMegaEntity, MegaOutPort, safe_int
 from .exceptions import CannotConnect, NoPort
 from .i2c import parse_scan_page
-from .raw_i2c import read_scd41
+from .raw_i2c import poll_raw_i2c
 from .tools import make_ints, int_ignore, PriorityLock
 
 TEMP_PATT = re.compile(r"temp:([01234567890\.]+)")
@@ -142,6 +142,8 @@ class MegaD:
         self._loop = loop
         self._customize = None
         self.values = {}
+        # per-bus state of software I2C drivers (e.g. detected light sensor chip)
+        self.raw_i2c_state: dict = {}
         self.last_port = None
         self.updater = DataUpdateCoordinator(
             hass,
@@ -269,22 +271,11 @@ class MegaD:
 
         _seen_raw: set = set()
         for cfg in self._raw_i2c_configs:
-            sda = str(cfg.get('sda', ''))
-            scl = str(cfg.get('scl', ''))
-            addr = int(cfg.get('address', 0))
-            key = (sda, scl, addr)
+            key = (str(cfg.get('sda', '')), str(cfg.get('scl', '')), cfg.get('type'))
             if key in _seen_raw:
                 continue
             _seen_raw.add(key)
-            if cfg.get('type', 'scd41') == 'scd41':
-                try:
-                    vals = await read_scd41(self, sda, scl, addr)
-                    for k, v in vals.items():
-                        self.values[(sda, scl, addr, k)] = v
-                except Exception:
-                    self.lg.exception(
-                        "raw I2C SCD41 poll error sda=%s scl=%s addr=0x%02x", sda, scl, addr
-                    )
+            await poll_raw_i2c(self, cfg)
 
         for x in self.extenders:
             ret = await self._update_extender(x)
@@ -348,27 +339,6 @@ class MegaD:
                     # raise
                     await asyncio.sleep(1)
             raise asyncio.TimeoutError("after 3 tries")
-
-    async def _raw_request(self, **kwargs) -> Optional[str]:
-        """HTTP GET without acquiring _http_lck.  Caller must hold the lock."""
-        cmd = "&".join([f"{k}={v}" for k, v in kwargs.items() if v is not None])
-        url = f"http://{self.host}/{self.sec}"
-        if cmd:
-            url = f"{url}/?{cmd}"
-        self.lg.debug("raw request: %s", url)
-        for _ntry in range(3):
-            try:
-                async with aiohttp.request(
-                    "get", url=url, timeout=aiohttp.ClientTimeout(total=5)
-                ) as req:
-                    if req.status != 200:
-                        self.lg.warning("raw request %s returned %s", url, req.status)
-                        return None
-                    return await req.text(encoding="iso-8859-5")
-            except asyncio.TimeoutError:
-                self.lg.warning("timeout on raw request %s", url)
-                await asyncio.sleep(1)
-        return None
 
     @property
     def _raw_i2c_configs(self) -> list:

@@ -90,14 +90,30 @@ class SoftI2C:
     async def _dir(self, pin: str, out: bool) -> None:
         await self._r(pt=pin, dir=1 if out else 0)
 
-    async def _get(self, pin: str) -> str:
+    async def _get_once(self, pin: str) -> str:
         """Sample an input pin.  Re-reads (harmless) if the answer is not ON/OFF."""
+        val = ""
         for attempt in range(3):
             val = await self._r(pt=pin, cmd="get")
             if val in ("ON", "OFF"):
                 return val
             _LOGGER.debug("unexpected answer %r while sampling pin %s (try %s)", val, pin, attempt + 1)
         return val
+
+    async def _get(self, pin: str) -> str:
+        """Sample a data bit while SCL is high.
+
+        The controller reports input state with some filtering latency, which
+        showed up as sporadic single-bit read errors (~1 per 300 bits).  Two
+        samples must agree; otherwise a third, later sample wins.
+        """
+        a = await self._get_once(pin)
+        b = await self._get_once(pin)
+        if a == b:
+            return a
+        c = await self._get_once(pin)
+        _LOGGER.debug("pin %s samples disagree (%s, %s) -> %s", pin, a, b, c)
+        return c
 
     async def _init(self) -> None:
         """Set both pins to output/high and recover a possibly stuck bus.

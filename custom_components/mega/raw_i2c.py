@@ -62,6 +62,10 @@ def _crc8(data: typing.Sequence[int], init: int = 0xFF) -> int:
     return c & 0xFF
 
 
+def _hex(data: typing.Sequence[int]) -> str:
+    return " ".join(f"{b:02X}" for b in data)
+
+
 class I2CError(Exception):
     """Raised when the slave did not answer or returned bad data."""
 
@@ -85,6 +89,15 @@ class SoftI2C:
 
     async def _dir(self, pin: str, out: bool) -> None:
         await self._r(pt=pin, dir=1 if out else 0)
+
+    async def _get(self, pin: str) -> str:
+        """Sample an input pin.  Re-reads (harmless) if the answer is not ON/OFF."""
+        for attempt in range(3):
+            val = await self._r(pt=pin, cmd="get")
+            if val in ("ON", "OFF"):
+                return val
+            _LOGGER.debug("unexpected answer %r while sampling pin %s (try %s)", val, pin, attempt + 1)
+        return val
 
     async def _init(self) -> None:
         """Set both pins to output/high and recover a possibly stuck bus.
@@ -140,7 +153,7 @@ class SoftI2C:
         bits = 0
         for _ in range(8):
             await self._r(cmd=f"{self._scl}:1")
-            val = await self._r(pt=self._sda, cmd="get")
+            val = await self._get(self._sda)
             # ON = transistor conducting = line LOW = I2C logical 0
             bits = (bits << 1) | (0 if val == "ON" else 1)
             await self._r(cmd=f"{self._scl}:0")
@@ -213,17 +226,17 @@ async def read_scd41(
     r = await i2c.write_read(address, _SCD41_MEASURE_CMD, 9, delay=_SCD41_MEASURE_DELAY)
 
     if r[2] != _crc8(r[0:2]):
-        _LOGGER.warning("SCD41 CO2 CRC error  sda=%s scl=%s addr=0x%02x", sda, scl, address)
+        _LOGGER.warning("SCD41 CO2 CRC error  sda=%s scl=%s addr=0x%02x frame=%s", sda, scl, address, _hex(r))
     else:
         result[KEY_CO2] = (r[0] << 8) | r[1]
 
     if r[5] != _crc8(r[3:5]):
-        _LOGGER.warning("SCD41 temp CRC error sda=%s scl=%s addr=0x%02x", sda, scl, address)
+        _LOGGER.warning("SCD41 temp CRC error sda=%s scl=%s addr=0x%02x frame=%s", sda, scl, address, _hex(r))
     else:
         result[KEY_TEMP] = round(-45 + 175 * ((r[3] << 8) | r[4]) / 65535, 2)
 
     if r[8] != _crc8(r[6:8]):
-        _LOGGER.warning("SCD41 RH CRC error   sda=%s scl=%s addr=0x%02x", sda, scl, address)
+        _LOGGER.warning("SCD41 RH CRC error   sda=%s scl=%s addr=0x%02x frame=%s", sda, scl, address, _hex(r))
     else:
         result[KEY_RH] = round(100 * ((r[6] << 8) | r[7]) / 65535, 2)
 
@@ -244,6 +257,13 @@ async def _htu21d_measure(i2c: SoftI2C, address: int, cmd: int) -> typing.Option
     if r[0] == 0xFF and r[1] == 0xFF and r[2] == 0xFF:
         raise I2CError("no answer from HTU21D (bus reads all ones)")
     if _crc8(r[0:2], init=0x00) != r[2]:
+        _LOGGER.debug("HTU21D cmd 0x%02X bad frame %s", cmd, _hex(r))
+        return None
+    # status bit 1: 0 = temperature frame, 1 = humidity frame; an all-zero frame
+    # passes CRC but is physically impossible (-46.85 C / -6 %)
+    expect_hum = cmd in (_HTU21D_TRIG_HUM_NOHOLD, 0xE5)
+    if bool(r[1] & 0x02) != expect_hum or (r[0] == 0 and r[1] == 0):
+        _LOGGER.debug("HTU21D cmd 0x%02X implausible frame %s", cmd, _hex(r))
         return None
     # two LSBs are status bits
     return ((r[0] << 8) | r[1]) & 0xFFFC
@@ -315,6 +335,8 @@ async def read_opt3001(
     if r[0] == 0xFF and r[1] == 0xFF:
         raise I2CError("no answer from OPT3001 (bus reads all ones)")
     exponent = r[0] >> 4
+    if exponent > 0x0B:
+        raise I2CError(f"OPT3001 implausible result {_hex(r)}")
     mantissa = ((r[0] & 0x0F) << 8) | r[1]
     return {KEY_LUX: round(0.01 * (1 << exponent) * mantissa, 2)}
 
@@ -325,6 +347,19 @@ MAX44009_DEFAULT_ADDR = 0x4A         # A0 pin -> GND; 0x4B -> VCC
 MAX44009_ADDRESSES = (0x4A, 0x4B)
 _MAX44009_REG_LUX_HIGH = 0x03
 _MAX44009_REG_LUX_LOW = 0x04
+_MAX44009_REG_THRESH_HIGH = 0x05   # power-on default 0xFF
+_MAX44009_REG_THRESH_LOW = 0x06    # power-on default 0x00
+
+
+async def max44009_present(i2c: SoftI2C, address: int) -> bool:
+    """True if a MAX44009 with default threshold registers answers at ``address``.
+
+    The chip has no ID register; the threshold defaults are a cheap
+    signature that random noise on a broken line is very unlikely to match.
+    """
+    high = (await i2c.write_read(address, [_MAX44009_REG_THRESH_HIGH], 1))[0]
+    low = (await i2c.write_read(address, [_MAX44009_REG_THRESH_LOW], 1))[0]
+    return high == 0xFF and low == 0x00
 
 
 async def read_max44009(
@@ -342,6 +377,9 @@ async def read_max44009(
     low = (await i2c.write_read(address, [_MAX44009_REG_LUX_LOW], 1))[0]
     if high == 0xFF and low == 0xFF:
         raise I2CError("no answer from MAX44009 (bus reads all ones)")
+    if low & 0xF0:
+        # bits 7:4 of the low lux register always read 0 on a real chip
+        raise I2CError(f"MAX44009 implausible result {_hex([high, low])}")
     exponent = high >> 4
     if exponent == 0x0F:
         raise I2CError("MAX44009 overrange")
@@ -370,8 +408,9 @@ async def _detect_light_sensor(
             continue
     for addr in MAX44009_ADDRESSES:
         try:
-            await read_max44009(hub, sda, scl, addr, mode)
-            return LIGHT_MAX44009, addr
+            if await max44009_present(i2c, addr):
+                await read_max44009(hub, sda, scl, addr, mode)
+                return LIGHT_MAX44009, addr
         except I2CError:
             continue
     return None
@@ -487,5 +526,6 @@ async def poll_raw_i2c(hub: MegaD, cfg: dict) -> None:
     except Exception:
         _LOGGER.exception("raw I2C %s poll error sda=%s scl=%s", sensor_type, sda, scl)
         return
+    _LOGGER.debug("raw I2C %s sda=%s scl=%s -> %s", sensor_type, sda, scl, vals)
     for k, v in vals.items():
         hub.values[raw_i2c_value_key(sda, scl, sensor_type, k)] = v

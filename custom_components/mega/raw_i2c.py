@@ -44,6 +44,11 @@ _CRC8_POLY = 0x31
 # I2C lock priority - lower number wins; 100 lets normal requests (-1..0) go first.
 _I2C_PRIORITY = 100
 
+# Pause between raising SCL and sampling SDA.  The controller reports input
+# state with filtering latency; sampling too early returned the previous bit
+# roughly once per 300 bits (random CRC failures).
+_SAMPLE_DELAY = 0.03
+
 # Value keys produced by the drivers
 KEY_CO2 = "co2"
 KEY_TEMP = "temp"
@@ -169,6 +174,7 @@ class SoftI2C:
         bits = 0
         for _ in range(8):
             await self._r(cmd=f"{self._scl}:1")
+            await asyncio.sleep(_SAMPLE_DELAY)
             val = await self._get(self._sda)
             # ON = transistor conducting = line LOW = I2C logical 0
             bits = (bits << 1) | (0 if val == "ON" else 1)

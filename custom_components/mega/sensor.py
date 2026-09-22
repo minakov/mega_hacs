@@ -93,7 +93,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry, asyn
     for cfg in raw_i2c_list:
         sda = str(cfg.get(CONF_SDA, ''))
         scl = str(cfg.get(CONF_SCL, ''))
-        sensor_type = cfg.get('type', 'scd41')
+        sensor_type = cfg.get('type', 'wallmount_d')
         name_prefix = cfg.get(CONF_NAME)
         synthetic_port = f"i2c_{sda}"
         # SDA/SCL are driven by software, they must not be polled as regular ports
@@ -378,7 +378,7 @@ class MegaRawI2CSensor(FilterBadValues):
         sda: str,
         scl: str,
         key: str,
-        sensor_type: str = "scd41",
+        sensor_type: str = "wallmount_d",
         address: typing.Optional[int] = None,
         *args,
         **kwargs,

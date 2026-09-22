@@ -21,7 +21,8 @@ preserved between requests.
 
 Supported drivers (``type`` in the ``raw_i2c`` YAML list):
 
-* ``scd41``    - Sensirion SCD41 (CO2 / temperature / humidity)
+* ``wallmount_d`` - MegaD-WallMount-Sensor-CO2-D, and any bare Sensirion
+  SCD41 on the bus (CO2 / temperature / humidity)
 * ``htu21d``   - HTU21D / Si7021 / SHT21 (temperature / humidity)
 * ``opt3001``  - TI OPT3001 ambient light (lux)
 * ``max44009`` - Maxim MAX44009 ambient light (lux)
@@ -475,14 +476,14 @@ async def read_outdoor(
 
 Driver = typing.Callable[..., typing.Awaitable[dict]]
 
-TYPE_SCD41 = "scd41"
+TYPE_WALLMOUNT_D = "wallmount_d"
 TYPE_HTU21D = "htu21d"
 TYPE_OPT3001 = "opt3001"
 TYPE_MAX44009 = "max44009"
 TYPE_OUTDOOR = "outdoor"
 
 RAW_I2C_DRIVERS: dict[str, Driver] = {
-    TYPE_SCD41: read_scd41,
+    TYPE_WALLMOUNT_D: read_scd41,
     TYPE_HTU21D: read_htu21d,
     TYPE_OPT3001: read_opt3001,
     TYPE_MAX44009: read_max44009,
@@ -491,7 +492,7 @@ RAW_I2C_DRIVERS: dict[str, Driver] = {
 
 # Value keys each driver produces (used to create sensor entities)
 RAW_I2C_KEYS: dict[str, tuple[str, ...]] = {
-    TYPE_SCD41: (KEY_CO2, KEY_TEMP, KEY_RH),
+    TYPE_WALLMOUNT_D: (KEY_CO2, KEY_TEMP, KEY_RH),
     TYPE_HTU21D: (KEY_TEMP, KEY_HUM),
     TYPE_OPT3001: (KEY_LUX,),
     TYPE_MAX44009: (KEY_LUX,),
@@ -514,7 +515,7 @@ async def poll_raw_i2c(hub: MegaD, cfg: dict) -> None:
     some values are missing, the read is repeated once; a warning is logged
     only if values are still missing after the retry.
     """
-    sensor_type = cfg.get("type", TYPE_SCD41)
+    sensor_type = cfg.get("type", TYPE_WALLMOUNT_D)
     driver = RAW_I2C_DRIVERS.get(sensor_type)
     if driver is None:
         _LOGGER.warning("unknown raw_i2c type %s", sensor_type)

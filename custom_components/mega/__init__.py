@@ -118,7 +118,7 @@ OWBUS = vol.Schema({
 RAW_I2C_DEVICE = vol.Schema({
     vol.Required(CONF_SDA): vol.Coerce(str),
     vol.Required(CONF_SCL): vol.Coerce(str),
-    vol.Optional('type', default='scd41'): vol.In(RAW_I2C_TYPES),  # type: ignore[call-arg]
+    vol.Optional('type', default='wallmount_d'): vol.In(RAW_I2C_TYPES),  # type: ignore[call-arg]
     vol.Optional('address', description='адрес i2c-устройства, по умолчанию стандартный для типа'): vol.Coerce(int),
     vol.Optional('mode', default=1, description='1 - программный i2c, 2 - частично аппаратный (быстрее)'): vol.In([1, 2]),  # type: ignore[call-arg]
     vol.Optional('light', default='auto', description='датчик света в outdoor: auto, opt3001, max44009'): vol.In(LIGHT_SENSORS),  # type: ignore[call-arg]
